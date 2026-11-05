@@ -1,0 +1,36 @@
+{
+  "name": "dsh-living-plan",
+  "version": "0.1.0",
+  "description": "A living plan document for DeepSeek Harness sessions: versioned, user-editable, and re-injected after compaction.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./core": "./lib/core.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/core.js",
+    "lib/index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.1-rc.5": "compatible"
+      }
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,8 @@
+# Bundle patch layer: mount the living-plan host plugin.
+- insert:
+    - id: living-plan
+      name: dsh-living-plan
+      config:
+        includeSubagents: false
+        maxPlanBytes: 24576
+        historyLimit: 50
