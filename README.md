@@ -19,7 +19,7 @@
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add /Users/2_dogg/code/dsh-living-plan
+  plugin --profile desktop add ~/code/dsh-living-plan
 ```
 
 重启 App。插件随 profile 加载，对所有新会话生效。
