@@ -80,7 +80,13 @@ Web 面板（一次性 `web` profile，ego-lite 实测）：
 - 再写一版后历史 chips 出现 v2/v1，点 v1 显示黄色「正在看历史版本 v1」横幅，内容确实没有 v2 的进展行；
 - 直接改 `plan.md` 追加一行，5 秒轮询后变成 v3、`用户修改`、历史 3 版，新行出现在面板里。
 
-核心单测 10 项全过（含历史列表和按版本读取）。
+PTC / 桌面：
+
+- `desktop` profile 安装 0.2.0，App 重启后新会话系统提示出现 living plan section；
+- 一次性 web profile 强制 `default: ptc`，新建会话让模型调 `plan_write`：v1 成功、554 字节，模型在 `run_code` 里调用工具；同一会话右栏「计划」显示 PTC 计划；
+- 安装前就已存在的会话可能缓存旧 `tools:sdk` 声明（新工具不在声明里但 `tools.plan_*` 实际可调用）；开新会话即可拿到完整 SDK 声明。
+
+核心单测 11 项全过（含历史列表、按版本读取、客户端 bundle 结构）。
 
 ## 已知边界
 
