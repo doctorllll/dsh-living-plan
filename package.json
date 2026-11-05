@@ -2,6 +2,22 @@
   "name": "dsh-living-plan",
   "version": "0.2.0",
   "description": "A living plan document for DeepSeek Harness sessions: versioned, user-editable, and re-injected after compaction.",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "plan",
+    "agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doctorllll/dsh-living-plan.git"
+  },
+  "homepage": "https://github.com/doctorllll/dsh-living-plan#readme",
+  "bugs": {
+    "url": "https://github.com/doctorllll/dsh-living-plan/issues"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {
