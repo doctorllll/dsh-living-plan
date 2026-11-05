@@ -15,10 +15,11 @@
 
 ## 装法
 
-先完全退出 DeepSeek Harness 桌面 App，再：
+先完全退出 DeepSeek Harness 桌面 App。desktop profile 只认 App 自带 CLI，PATH 里的 npm 全局 `dsh` 会报 `profile "desktop" is managed exclusively by the Electron application`。
 
 ```sh
-dsh plugin --profile desktop add /Users/2_dogg/code/dsh-living-plan
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop add /Users/2_dogg/code/dsh-living-plan
 ```
 
 重启 App。插件随 profile 加载，对所有新会话生效。
@@ -26,7 +27,8 @@ dsh plugin --profile desktop add /Users/2_dogg/code/dsh-living-plan
 卸载：
 
 ```sh
-dsh plugin --profile desktop remove dsh-living-plan
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop remove dsh-living-plan
 ```
 
 ## 配置
