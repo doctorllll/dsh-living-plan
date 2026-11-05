@@ -100,10 +100,30 @@ test('notes go to the history index', () => {
   assert.match(index, /first sketch/)
 })
 
+test('history lists newest first and readVersion returns a copy', () => {
+  const store = new PlanStore({ home: tempHome() })
+  store.markSeen('s1', EMPTY_HASH)
+  store.write('s1', '# Plan\n\nv1')
+  store.write('s1', '# Plan\n\nv2')
+  const history = store.history('s1')
+  assert.deepEqual(history.map((entry) => entry.version), [2, 1])
+  assert.equal(store.readVersion('s1', 1), '# Plan\n\nv1\n')
+  assert.equal(store.readVersion('s1', 99), null)
+})
+
 test('separate sessions do not share a plan', () => {
   const store = new PlanStore({ home: tempHome() })
   store.markSeen('a', EMPTY_HASH)
   store.write('a', '# A\n')
   assert.equal(store.refresh('b').version, 0)
   assert.notEqual(store.refresh('a').path, store.refresh('b').path)
+})
+
+test('client bundle uses the Web module loader and Node-free imports', () => {
+  const source = fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+  assert.match(source, /^window\.__ModuleLoader__\.load\(/)
+  assert.match(source, /exports\.apply = apply/)
+  assert.match(source, /require\("react"\)/)
+  assert.doesNotMatch(source, /require\("node:/)
+  assert.doesNotMatch(source, /from "node:/)
 })

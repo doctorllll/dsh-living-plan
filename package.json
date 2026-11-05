@@ -1,17 +1,19 @@
 {
   "name": "dsh-living-plan",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A living plan document for DeepSeek Harness sessions: versioned, user-editable, and re-injected after compaction.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./core": "./lib/core.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/core.js",
     "lib/index.js",
+    "lib/client.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
@@ -22,6 +24,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ],
+      "platform": "web"
     },
     "compatibility": {
       "dshReleases": {
