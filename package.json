@@ -1,6 +1,6 @@
 {
   "name": "dsh-living-plan",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A living plan document for DeepSeek Harness sessions: versioned, user-editable, and re-injected after compaction.",
   "keywords": [
     "deepseek",
