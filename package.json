@@ -1,14 +1,18 @@
 {
   "name": "dsh-living-plan",
   "version": "0.2.1",
-  "description": "A living plan document for DeepSeek Harness sessions: versioned, user-editable, and re-injected after compaction.",
+  "description": "A living plan for DeepSeek Harness sessions: one Markdown file per session, versioned, editable by you, and re-injected at every step so it survives compaction",
+  "author": "doctorllll",
+  "license": "MIT",
   "keywords": [
-    "deepseek",
+    "dsh-plugin",
     "deepseek-harness",
     "dsh",
-    "plugin",
+    "deepseek",
     "plan",
-    "agent"
+    "planning",
+    "agent",
+    "long-running-tasks"
   ],
   "repository": {
     "type": "git",
@@ -32,6 +36,9 @@
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "docs/images",
     "LICENSE"
   ],
   "scripts": {
@@ -57,6 +64,5 @@
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
-  },
-  "license": "MIT"
+  }
 }
