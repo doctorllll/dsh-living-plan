@@ -8,7 +8,7 @@
 
 它补的是官方 `/plan`（一次性评审）和 `goal`（一句目标）之间的空档：**长任务的“现在在哪、下一步做什么”**。
 
-- 版本：0.3.0（[CHANGELOG](CHANGELOG.md)）
+- 版本：0.3.1（[CHANGELOG](CHANGELOG.md)）
 - 已验证 DSH：0.2.2-rc.1（桌面 App、网页版 `dsh web`、headless、PTC 模式）
 - License：MIT
 
@@ -133,7 +133,7 @@ error: profile "desktop" is managed exclusively by the Electron application
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.0
+  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.1
 ```
 
 装完重开 App。插件随 profile 加载，对所有**新会话**生效。
@@ -141,7 +141,7 @@ error: profile "desktop" is managed exclusively by the Electron application
 ### 其他 profile（网页版、TUI 等）
 
 ```sh
-dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.0
+dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.1
 ```
 
 ### 只想在部分 profile 里用
@@ -155,7 +155,7 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.0
 
 ### 升级
 
-把命令里的 `#v0.3.0` 换成新版本的标签重新 `plugin add`，重开 App。从本地目录安装（`add <路径>`）时，`git pull` 后重开 App 即生效。
+把命令里的 `#v0.3.1` 换成新版本的标签重新 `plugin add`，重开 App。从本地目录安装（`add <路径>`）时，`git pull` 后重开 App 即生效。
 
 ### 卸载
 
@@ -254,14 +254,16 @@ $DSH_HOME/living-plan/<session-id>/
 |---|---|---|---|
 | 新会话 | 写了才贴 | 空，按需创建 | 是 |
 | 同会话续跑 | 是（对话里已有就不重贴） | 接着原版本 | 是 |
-| Fork / 分支（新会话） | 父会话贴过的那条仍在对话里；分支写了自己的计划才贴新的 | **从空开始，不继承父会话** | 是 |
+| 分支 / 移到别的工作区（DSH 复制出新会话、给新编号） | 是 | **自动继承原会话当时那一版**，作为本会话第 1 版 | 是 |
 | 子代理（默认） | 否 | 不创建 | 否，返回“subagent session does not keep a living plan” |
 
-- **Fork** 是新的 `session-id`，插件按 id 取文件，所以父计划不会自动带过去。要在分支继续用计划，fork 后让模型先写一份，或手动把父计划贴进对话。
+- **分支 / 移动会话**：DSH 复制出的新会话有新的 `session-id`，而计划按 id 存。0.3.1 起，新会话第一次运行时，插件从继承来的对话里找到原会话最后贴出的那一版（按 hash 在原会话历史里找；找不到就用原会话当前版并注明），复制成本会话第 1 版（`updatedBy: inherited`，`meta.inheritedFrom` 记来源），贴出时说明"计划从原会话第 N 版带过来"。原会话没有计划、或本会话已有自己的计划（包括用户清空过）时不继承。之后两边各改各的。
 - **子代理** 默认不建计划；把 `includeSubagents` 设为 `true` 后每个子代理会有自己的计划文件。
 - **`/plan`** 仍是官方评审门；评审通过后让模型把同一份计划用 `plan_write` 落盘即可，两者不互斥。
 
 ## 已验证
+
+2026-11-09，0.3.1：网页版临时 home 实测分支——原会话计划第 2 版，点「在新对话中分支」后新会话第一步就贴出"计划从原会话第 2 版带过来"，内容与原会话 v2 逐字相同；模型接着改出本会话 v2、v3，并能说清计划来历。单测 27 项。
 
 2026-11-09，0.3.0，DSH 0.2.2-rc.1（临时 DSH_HOME，真模型 `auto/deepseek-v4.1-flash`）：
 
@@ -334,12 +336,12 @@ cordis.patch.yml   bundle 挂载行与默认配置
 
 - **面板只读**：不做行内编辑和 diff；改计划走 `plan_write` 或直接编辑文件。
 - **整份替换**：没有局部 patch；24KB 上限内够用，超了要模型自己收束。
-- **Fork 不继承**：DSH fork seed 不暴露父 session id，插件无法自动复制父计划；可做 fork 钩子，但需要上游配合。
+- **继承靠对话里贴过的计划消息认出原会话**：原会话从没贴过计划（比如 0.2.x 时代的会话），分支出来就没有可继承的。
 - **依赖 DSH 内部 API**：`agent/created`、`agent/pre-step`、`agent.ctx.systemPrompt.section`、`sessionProjections`、`session.eventAt`、压缩替换的 `sourceEventSeqs`、`ctx.tools.register`、`webServer.register`；rc 升级后需要回归。
 - **不分 preset**：契约段和计划消息进 profile 里的每个会话，暂时没有"只对某些 preset 生效"的开关；不需要的 profile 用 `disabled: true` 关掉（见安装）。
 - **原话账本只收 `source.kind: user` 的消息**（界面里打的字、headless / 定时任务的任务文本）；其他来源的合成消息不收。
 - **软约束**：模型是否主动写计划取决于任务判断，不是系统强制；要 100% 必写需要加工具调用前的硬闸。
-- 路线：按 preset 开关；面板行内编辑 / 版本 diff；fork 继承；失败重试与更细的预算控制。
+- 路线：按 preset 开关；面板行内编辑 / 版本 diff；失败重试与更细的预算控制。
 
 ## 反馈
 

@@ -70,10 +70,29 @@ test('posts the plan once, then again only for a new version, a swallow, a ledge
   assert.equal(decide(state, plan(), SID, opts).reason, null)
 })
 
-test('a fork does not count its parent delivery as its own', () => {
-  const state = fold([posted(1, { form: 'plan', sessionId: 'parent', hash: 'h1', version: 1, ledger: 0, refresh: 0 })])
+test('a copied session asks for its parent plan instead of starting over', () => {
+  const state = fold([posted(1, { form: 'plan', sessionId: 'parent', hash: 'h1', version: 3, ledger: 0, refresh: 0 })])
+  // Its own plan, once written, is posted as its first.
   assert.equal(decide(state, plan(), SID).reason, 'first')
-  assert.equal(decide(state, none, SID).reason, null)
+  // No plan file yet: name the parent version the conversation showed.
+  const choice = decide(state, none, SID)
+  assert.equal(choice.reason, 'orphan')
+  assert.deepEqual(choice.parent, { sessionId: 'parent', version: 3, hash: 'h1' })
+  // A session that had its own plan and cleared it is not re-seeded.
+  assert.equal(decide(state, { ...none, version: 2 }, SID).parent, null)
+  // The parent's cleared plan is nothing to inherit.
+  const cleared = fold([posted(1, { form: 'plan', sessionId: 'parent', hash: EMPTY_HASH, version: 4, ledger: 0, refresh: 0 })])
+  assert.equal(decide(cleared, none, SID).parent, null)
+})
+
+test('the no-plan reminder is per session', () => {
+  const parentReminded = fold([user(1), ...Array.from({ length: 8 }, (_, i) => step(2 + i)),
+    { type: 'user/message', seq: 20, time: 0, surfaceOp: 'append', data: messageFor('r', { form: 'reminder', sessionId: 'parent', remindedFor: null, noPlan: true }) }])
+  assert.equal(decide(parentReminded, none, SID).reminder.kind, 'no-plan')
+  assert.equal(decide(parentReminded, none, 'parent').reminder, null)
+  // 0.3.0 notes carry no session id and count as answered.
+  const legacy = fold([{ type: 'user/message', seq: 21, time: 0, surfaceOp: 'append', data: messageFor('r', { form: 'reminder', remindedFor: null, noPlan: true }) }], parentReminded)
+  assert.equal(decide(legacy, none, SID).reminder, null)
 })
 
 test('a deleted plan file is announced once', () => {
@@ -99,7 +118,7 @@ test('reminds once when the user spoke after the plan and it did not move', () =
 test('reminds once when a long session has no plan', () => {
   let state = fold([user(1), ...Array.from({ length: 8 }, (_, i) => step(2 + i))])
   assert.equal(decide(state, none, SID).reminder.kind, 'no-plan')
-  state = fold([{ type: 'user/message', seq: 20, time: 0, surfaceOp: 'append', data: messageFor('r', { form: 'reminder', remindedFor: null, noPlan: true }) }], state)
+  state = fold([{ type: 'user/message', seq: 20, time: 0, surfaceOp: 'append', data: messageFor('r', { form: 'reminder', sessionId: SID, remindedFor: null, noPlan: true }) }], state)
   assert.equal(decide(state, none, SID).reminder, null)
 })
 

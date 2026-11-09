@@ -8,7 +8,7 @@ English · [中文](README.zh.md)
 
 It fills the gap between the built-in `/plan` (a one-off review) and `goal` (a one-line target): **where a long task stands now and what comes next**.
 
-- Version: 0.3.0 ([CHANGELOG](CHANGELOG.md))
+- Version: 0.3.1 ([CHANGELOG](CHANGELOG.md))
 - Verified on DSH 0.2.2-rc.1 (desktop app, `dsh web`, headless, PTC mode)
 - License: MIT
 
@@ -52,14 +52,14 @@ The prompt gives a skeleton (title, the user's words quoted with `>`, goal and a
 Requirements: DSH 0.2.2-rc.1 (others untested; 0.3.0 needs the `sessionProjections` service); quit the desktop app before installing.
 
 ```sh
-dsh plugin --profile <profile> add github:doctorllll/dsh-living-plan#v0.3.0
+dsh plugin --profile <profile> add github:doctorllll/dsh-living-plan#v0.3.1
 ```
 
 The desktop app's `desktop` profile only accepts the CLI bundled with the app (a `dsh` on your PATH refuses with `managed exclusively by the Electron application`). On macOS:
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.0
+  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.1
 ```
 
 Reopen the app afterwards. The plugin applies to **new sessions** in that profile.
@@ -124,7 +124,7 @@ The 「计划」 card in the right sidebar shows the current version, update tim
 |---|---|---|---|
 | New session | once written | empty, created on demand | yes |
 | Same session resumed | yes (not re-posted while still in the conversation) | continues | yes |
-| Fork / branch | the parent's posted copy stays in the history; the fork's own plan is posted once written | **starts empty** (not inherited) | yes |
+| Branch / moved to another workspace (DSH copies it into a new session id) | yes | **inherits the parent's plan as shown at the copy**, as its version 1 | yes |
 | Subagent (default) | no | none | no |
 
 `/plan` still works as the official review gate; after approval, have the model save the same plan with `plan_write`.
@@ -159,7 +159,7 @@ node --check lib/index.js lib/client.js
 
 - The panel is read-only (no inline edit or diff); change the plan with `plan_write` or by editing the file.
 - Whole-file replacement only, within a 24 KB default limit.
-- Forks start empty: DSH's fork seed does not expose the parent session id.
+- A copied session finds its parent through the plan messages it inherited; a parent that never posted a plan (0.2.x sessions) leaves nothing to inherit.
 - Not per preset: the section goes into every session of the profile; disable the plugin where it is not wanted.
 - Depends on DSH host APIs (`agent/created`, `agent/pre-step`, `agent.ctx.systemPrompt.section`, `sessionProjections`, `session.eventAt`, the `sourceEventSeqs` of compaction replacements, `ctx.tools.register`, `webServer.register`); re-test after DSH upgrades.
 - The verbatim ledger takes only `source.kind: user` messages (what the user typed, headless or scheduled task text).

@@ -127,3 +127,30 @@ test('client bundle uses the Web module loader and Node-free imports', () => {
   assert.doesNotMatch(source, /require\("node:/)
   assert.doesNotMatch(source, /from "node:/)
 })
+
+test('a copied session inherits the parent version it showed', () => {
+  const store = new PlanStore({ home: tempHome() })
+  store.markSeen('parent', EMPTY_HASH)
+  store.write('parent', '# Plan\n\nv1')
+  const shown = store.write('parent', '# Plan\n\nv2')
+  store.write('parent', '# Plan\n\nv3 after the branch')
+  const from = store.inherit('child', 'parent', { version: shown.version, hash: shown.hash })
+  assert.deepEqual(from, { sessionId: 'parent', version: 2, exact: true })
+  const child = store.refresh('child')
+  assert.equal(child.version, 1)
+  assert.equal(child.text, '# Plan\n\nv2\n')
+  assert.equal(child.updatedBy, 'inherited')
+  assert.deepEqual(child.inheritedFrom, from)
+  // Only once, and never over a plan of its own.
+  assert.equal(store.inherit('child', 'parent', { version: 3 }), null)
+})
+
+test('inheritance falls back to the parent current plan, and gives up without one', () => {
+  const store = new PlanStore({ home: tempHome() })
+  store.markSeen('parent', EMPTY_HASH)
+  store.write('parent', '# Plan\n\nnow')
+  const from = store.inherit('child', 'parent', { version: 9, hash: 'not-there' })
+  assert.deepEqual(from, { sessionId: 'parent', version: 1, exact: false })
+  assert.equal(store.inherit('orphan', 'missing-parent', { version: 1, hash: 'x' }), null)
+  assert.equal(store.refresh('orphan').exists, false)
+})

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-11-09
+
+- A session DSH copies into a new id — a branch ("在新对话中分支"), a move to another workspace — now inherits its parent's plan instead of starting over. The parent is found through the plan messages the copy inherited; the parent version the conversation showed is taken by hash from the parent's history (else the parent's current plan, noted as such) and saved as the copy's version 1 (`updatedBy: inherited`, `meta.inheritedFrom`). 0.3.0 posted "还没有计划" in such a copy, contradicting the plan still visible in its history.
+- The "no plan yet" reminder is tracked per session (projection state v2), so a copy no longer inherits its parent's "already reminded".
+- The panel labels an inherited version 「从原会话带来」.
+
 ## 0.3.0 — 2026-11-09
 
 Aim: through long sessions, repeated compaction and changes of mind, keep the model working towards what the user wants now.

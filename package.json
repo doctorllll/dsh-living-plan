@@ -1,6 +1,6 @@
 {
   "name": "dsh-living-plan",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A living plan for DeepSeek Harness sessions: one Markdown file per session, versioned, editable by you, posted into the conversation and re-posted after every compaction with the user's own words, so long sessions keep to what the user wants now",
   "author": "doctorllll",
   "license": "MIT",
