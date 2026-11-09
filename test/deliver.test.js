@@ -28,6 +28,9 @@ test('unrelated events keep the same state object', () => {
   assert.equal(applyEvent(state, { type: 'user/message', seq: 2, time: 0, surfaceOp: 'append', data: { source: { kind: 'time-context' } } }), state)
   assert.equal(projection.stateSchema.parse(state), state)
   assert.throws(() => projection.stateSchema.parse({ users: 'x' }))
+  // A state folded by an older version is rebuilt, not trusted.
+  const { changedAt, nudgedAt, ...older } = state
+  assert.throws(() => projection.stateSchema.parse(older))
 })
 
 test('folds user words, steps and its own deliveries', () => {
@@ -120,6 +123,36 @@ test('reminds once when a long session has no plan', () => {
   assert.equal(decide(state, none, SID).reminder.kind, 'no-plan')
   state = fold([{ type: 'user/message', seq: 20, time: 0, surfaceOp: 'append', data: messageFor('r', { form: 'reminder', sessionId: SID, remindedFor: null, noPlan: true }) }], state)
   assert.equal(decide(state, none, SID).reminder, null)
+})
+
+test('asks about progress when the plan stood still for staleSteps, then every staleSteps', () => {
+  const opts = { ...DEFAULTS, staleSteps: 4 }
+  const steps = (from, n) => Array.from({ length: n }, (_, i) => step(from + i))
+  const delivered = (seq, hash, version) => posted(seq, { form: 'plan', sessionId: SID, hash, version, ledger: 0, refresh: 0 })
+  let state = fold([step(1), delivered(2, 'h1', 1), ...steps(3, 3)])
+  assert.equal(decide(state, plan(), SID, opts).reminder, null)
+  state = fold([step(6)], state)
+  assert.deepEqual(decide(state, plan(), SID, opts).reminder, { kind: 'stale', steps: 4 })
+  // Not while a newer version is about to be posted, and not when switched off.
+  assert.equal(decide(state, plan({ hash: 'h2', version: 2 }), SID, opts).reminder, null)
+  assert.equal(decide(state, plan(), SID, { ...opts, staleSteps: 0 }).reminder, null)
+  // Asked once: quiet for another staleSteps, then asks again, counting from the change.
+  state = fold([{ type: 'user/message', seq: 7, time: 0, surfaceOp: 'append', data: messageFor('r', { form: 'reminder', sessionId: SID, remindedFor: null, noPlan: false, stale: true }) }, ...steps(8, 3)], state)
+  assert.equal(decide(state, plan(), SID, opts).reminder, null)
+  // A refresh reposts the same version: that is no change.
+  state = fold([delivered(11, 'h1', 1), step(12)], state)
+  assert.deepEqual(decide(state, plan(), SID, opts).reminder, { kind: 'stale', steps: 8 })
+  // A new version starts the count again.
+  state = fold([delivered(13, 'h2', 2), ...steps(14, 3)], state)
+  assert.equal(decide(state, plan({ hash: 'h2', version: 2 }), SID, opts).reminder, null)
+  state = fold([step(17)], state)
+  assert.equal(decide(state, plan({ hash: 'h2', version: 2 }), SID, opts).reminder.kind, 'stale')
+  // The changed-mind reminder comes first and counts as asking.
+  state = fold([user(18, '改成 B', 9000), ...steps(19, 3)], state)
+  assert.equal(decide(state, plan({ hash: 'h2', version: 2 }), SID, opts).reminder.kind, 'changed')
+  state = fold([{ type: 'user/message', seq: 22, time: 0, surfaceOp: 'append', data: messageFor('r', { form: 'reminder', sessionId: SID, remindedFor: 18, noPlan: false }) }], state)
+  assert.equal(decide(state, plan({ hash: 'h2', version: 2 }), SID, opts).reminder, null)
+  assert.match(renderReminder({ kind: 'stale', steps: 8 }, plan({ version: 2 }), ''), /第 2 版已经 8 步没动/)
 })
 
 test('placement: system posts nothing but still reminds', () => {

@@ -11,5 +11,6 @@
         placement: message
         refreshSteps: 40
         remindAfterSteps: 3
+        staleSteps: 20
         noPlanAfterSteps: 8
         ledgerMaxBytes: 6144

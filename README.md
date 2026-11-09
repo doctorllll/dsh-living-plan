@@ -39,6 +39,7 @@ dsh-living-plan keeps the plan in a **fixed per-session file**:
 - **Kept through compaction**: which version was posted and whether a compaction swallowed it are folded from the session log (a DSH compaction must list every node it shadows), so restarts and resumes agree.
 - **The user's words, verbatim**: user messages a compaction replaced ride along with the plan (the first one as fully as the budget allows, the rest clipped, total capped). Before a compaction they are in the conversation already and are not repeated.
 - **Change-of-mind reminder**: if the user spoke and the plan has not moved after `remindAfterSteps` steps, a short reminder quotes the user and asks the model to update the plan first. A long session with no plan gets one reminder too.
+- **Progress reminder**: when the plan has not changed for `staleSteps` steps (default 20), a short note asks what got done, what turned up and whether the next step changed — update the plan if so, carry on if not. It asks again at most every `staleSteps` steps, and a new version restarts the count. Only with `placement: message`.
 - **Shape hints**: `plan_write` returns hints when the saved plan lacks a quote of the user's words or acceptance criteria (the save still goes through).
 - **Versions**: each `plan_write` or edit by you bumps the version; old ones go to `history/vNNNN.md`.
 - **You can edit it**: editing `plan.md` directly is a supported path; the next step posts it as a new version.
@@ -86,13 +87,14 @@ Override by id in the profile's `cordis.patch.yml`:
     placement: message        # message = post into the conversation; system = the 0.2.x behaviour (plan in the system prompt)
     refreshSteps: 40          # re-post after this many steps; 0 = never
     remindAfterSteps: 3       # remind when the plan has not moved this many steps after the user spoke; 0 = off
+    staleSteps: 20            # ask about progress when the plan has not changed this many steps; 0 = off
     noPlanAfterSteps: 8       # remind once when a session has no plan after this many steps; 0 = off
     ledgerMaxBytes: 6144      # cap on the verbatim user words posted with the plan
     sectionOrder: 950         # where the contract section sits in the prompt
     home: null                # defaults to $DSH_HOME, then ~/.dsh
 ```
 
-`placement: system` is the fallback switch: one line and a restart bring back the old behaviour (the reminders keep working).
+`placement: system` is the fallback switch: one line and a restart bring back the old behaviour (the change-of-mind and no-plan reminders keep working; the progress reminder does not).
 
 ## Tools
 
