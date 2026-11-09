@@ -6,3 +6,10 @@
         includeSubagents: false
         maxPlanBytes: 24576
         historyLimit: 50
+        # message: post the plan into the conversation (kept across compaction);
+        # system: the pre-0.3 behaviour, plan text in the system prompt.
+        placement: message
+        refreshSteps: 40
+        remindAfterSteps: 3
+        noPlanAfterSteps: 8
+        ledgerMaxBytes: 6144

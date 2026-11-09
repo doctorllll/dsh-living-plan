@@ -4,12 +4,12 @@
 
 > DeepSeek Harness（DSH）插件，由宿主半和网页客户端半组成；不是 Agent Skill。
 
-给每个 DSH 会话一份**活计划**：一份 Markdown，模型在动手前写、工作中改；每次保存成为新版本；系统提示每一步都重新读取并注入当前版本，所以上下文压缩、重开、用户插话之后计划都还在。
+给每个 DSH 会话一份**活计划**：一份 Markdown，模型在动手前写、工作中改；每次保存成为新版本，并作为一条消息贴进对话；上下文被压缩后自动重贴，被压缩掉的用户原话逐字附在后面。长会话、多次压缩、用户中途改主意之后，模型仍然对着用户**现在**要的东西干活。
 
 它补的是官方 `/plan`（一次性评审）和 `goal`（一句目标）之间的空档：**长任务的“现在在哪、下一步做什么”**。
 
-- 版本：0.2.1（[CHANGELOG](CHANGELOG.md)）
-- 已验证 DSH：0.2.1-rc.5、0.2.2-rc.1（桌面 App、网页版 `dsh web`、PTC 模式）
+- 版本：0.3.0（[CHANGELOG](CHANGELOG.md)）
+- 已验证 DSH：0.2.2-rc.1（桌面 App、网页版 `dsh web`、headless、PTC 模式）
 - License：MIT
 
 <p>
@@ -41,17 +41,23 @@ DSH 自带的 `/plan` 是一个一次性评审门：批准之后，计划正文�
 
 于是长任务一旦被压缩或换人接手，模型就得从摘要里猜。`dsh-living-plan` 把计划做成一份**固定路径的会话文件**：
 
-- 模型每一步都能看到它；
+- 模型一直能看到最新版：改了就贴，压缩后重贴；
 - 每次修改都是一版，旧版可查；
-- 用户可以直接改文件，下一次请求模型就能看到；
+- 用户可以直接改文件，下一步模型就能看到；
+- DSH 的压缩摘要是英文转述，用户原话会丢；插件把被压缩掉的原话逐字补回来；
+- 用户说了话、计划却没跟着改，提醒模型先改计划；
 - Web 右栏有一个只读面板，用户不必去翻文件路径。
 
 ## 它做什么
 
 - **固定位置**：`$DSH_HOME/living-plan/<session-id>/plan.md`，按会话隔离，不写进工作区仓库。
-- **每一步注入**：插件注册一个 system prompt section，每个模型步骤现读文件；计划不靠对话摘要活着。
+- **贴进对话，不改系统提示**：计划正文以一条 `living-plan` 消息贴进对话。何时贴：有新版本（含用户手改）、上一份被压缩吞掉、距上次贴出已满 `refreshSteps` 步。系统提示里只有不变的写作契约，改计划不会打掉前缀缓存。
+- **压缩后不丢**：“贴过哪一版、有没有被压缩吞掉”从会话日志推出（DSH 的压缩替换必须列出被遮蔽的每个节点），App 重启、续跑都一样。
+- **用户原话账本**：被压缩掉的用户消息逐字附在计划后面一起贴（首条尽量全文，其余截断，总量有上限）；压缩前原话本来就在对话里，不重复贴。
+- **改口提醒**：用户说话后计划没更新、又过了 `remindAfterSteps` 步，贴一次短提醒，引用户那句话，要求先改计划再继续；长会话一直没有计划，也提醒一次。
+- **结构提示**：`plan_write` 存下的计划缺“用户原话引用”或“验收标准”时，在返回里提示（不拒写）。
 - **版本历史**：每次 `plan_write` 或用户直接改文件，版本 +1，旧版留在 `history/vNNNN.md`。
-- **用户可改**：直接编辑 `plan.md` 是支持路径，不是篡改；下一次请求会把它当作新版本并注入。
+- **用户可改**：直接编辑 `plan.md` 是支持路径，不是篡改；下一步会把它当作新版本贴出。
 - **写前校验**：`plan_write` 只接受“模型已经看过当前版本”的写入；如果文件在两步之间被改过，写入被拒，提示先 `plan_read`。这是防止覆盖用户改动的闸门。
 - **子代理默认不建计划**：`includeSubagents: false`，主会话的计划是唯一工作台；需要时可打开。
 - **Web 面板**：右栏 Guides「计划」，看当前版本、历史版本和文件路径。
@@ -60,10 +66,13 @@ DSH 自带的 `/plan` 是一个一次性评审门：批准之后，计划正文�
 
 ```
 模型请求组装
-  └─ System prompt section: living-plan:plan
-       ├─ 读取 plan.md
-       ├─ 渲染“当前第 N 版 / 用户改过 / 还没有计划”
-       ├─ 注入写作契约
+  ├─ System prompt section: living-plan:plan    （固定文本：写作契约 + 文件路径）
+  └─ agent/pre-step
+       ├─ 读取 plan.md（外部改动记为新版本）
+       ├─ 会话投影 livingPlan：贴过哪一版、是否被压缩吞掉、
+       │   被压掉的用户消息、用户最后一句之后走了几步
+       ├─ 需要时贴「你的计划（living plan）第 N 版」+「用户原话」
+       ├─ 需要时贴「计划提醒」
        └─ 标记这一版为“模型已看过”
 
 plan_read / plan_write
@@ -79,11 +88,13 @@ Web 右栏「计划」
 
 ### 写作契约
 
-提示词里固定写清（节选）：
+提示词里固定写清（节选）。计划骨架：标题下用 `>` 原样引用户的需求，然后「目标与验收」「已定」「已作废」「进度」「下一步」。
 
 > 开工前自己写，不用等用户要求：超过一次问答或小改动的工作，先用 `plan_write` 写出计划，再按顺序做。
 >
-> 工作推进就更新：完成一项、用户拍板、路线变了、发现后面依赖的东西。
+> 用户最新的话优先于计划里的旧内容。用户改口时先改计划再动手：旧的挪进「已作废」，新的连原话写进「已定」。
+>
+> 收工前逐条对照「目标与验收」，没满足的不说完成。
 >
 > 用 `plan_write` 整份替换；写之前如果用户可能刚改过，先 `plan_read`。
 >
@@ -96,7 +107,7 @@ Web 右栏「计划」
 `plan_write` 比较两个哈希：
 
 - 当前文件的哈希；
-- 这个会话最后一次被系统提示注入时的哈希（`seenHash`）。
+- 模型最后一次看到的那一版的哈希（`seenHash`，贴出或确认对话里已有当前版时记下）。
 
 两者不一致，说明文件在模型看到之后被用户改过，写入返回 `PLAN_STALE`，模型必须先 `plan_read`。这避免模型拿旧上下文覆盖用户刚写的内容。
 
@@ -106,7 +117,7 @@ Web 右栏「计划」
 
 ### 前置
 
-- DeepSeek Harness 0.2.1-rc.5 或 0.2.2-rc.1（其他版本未验证）
+- DeepSeek Harness 0.2.2-rc.1（其他版本未验证；0.3.0 需要 `sessionProjections` 服务）
 - Node.js 22.19+ 或 24+（DSH 自带的运行时即可）
 - 桌面 App 安装前必须完全退出
 
@@ -122,7 +133,7 @@ error: profile "desktop" is managed exclusively by the Electron application
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.2.1
+  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.0
 ```
 
 装完重开 App。插件随 profile 加载，对所有**新会话**生效。
@@ -130,7 +141,7 @@ error: profile "desktop" is managed exclusively by the Electron application
 ### 其他 profile（网页版、TUI 等）
 
 ```sh
-dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.2.1
+dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.0
 ```
 
 ### 只想在部分 profile 里用
@@ -144,7 +155,7 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.2.1
 
 ### 升级
 
-把命令里的 `#v0.2.1` 换成新版本的标签重新 `plugin add`，重开 App。从本地目录安装（`add <路径>`）时，`git pull` 后重开 App 即生效。
+把命令里的 `#v0.3.0` 换成新版本的标签重新 `plugin add`，重开 App。从本地目录安装（`add <路径>`）时，`git pull` 后重开 App 即生效。
 
 ### 卸载
 
@@ -165,11 +176,16 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.2.1
     includeSubagents: false   # true = 子代理会话也各自建计划
     maxPlanBytes: 24576       # 计划上限（字节）；超了 plan_write 返回 PLAN_LIMIT
     historyLimit: 50          # 保留最近多少版；0 = 不保留旧版
-    sectionOrder: 950         # 注入位置；改动会影响 prompt 缓存前缀
+    placement: message        # message = 贴进对话；system = 0.2.x 旧行为（正文进系统提示，每次改都打掉缓存）
+    refreshSteps: 40          # 距上次贴出满多少步重贴一次；0 = 不重贴
+    remindAfterSteps: 3       # 用户说话后计划多少步没动就提醒；0 = 关
+    noPlanAfterSteps: 8       # 会话多少步还没计划就提醒一次；0 = 关
+    ledgerMaxBytes: 6144      # 用户原话账本上限（字节）
+    sectionOrder: 950         # 契约段位置
     home: null                # 默认 $DSH_HOME，再退到 ~/.dsh
 ```
 
-默认值在 `cordis.patch.yml` 的 bundle insert 行里。
+默认值在 `cordis.patch.yml` 的 bundle insert 行里。`placement: system` 是回退开关：不用重装，改一行重启即可回到旧行为（提醒仍然有效）。
 
 ## 模型工具
 
@@ -188,7 +204,7 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.2.1
 - 参数：
   - `markdown`（必填）：完整 Markdown，建议以短标题开头
   - `note`（可选）：写进 `history/index.jsonl` 的变更说明，不进入计划正文
-- 返回：`version`、`bytes`、`path`
+- 返回：`version`、`bytes`、`path`；缺用户原话引用或验收标准时另有 `hints`（只是提示，已保存）
 - 失败：
   - `PLAN_STALE`：文件在模型看到后被改过，先 `plan_read`
   - `PLAN_LIMIT`：超过 `maxPlanBytes`，先压缩计划
@@ -236,9 +252,9 @@ $DSH_HOME/living-plan/<session-id>/
 
 | 场景 | 计划是否注入 | 计划文件 | 能否 plan_write |
 |---|---|---|---|
-| 新会话 | 是 | 空，按需创建 | 是 |
-| 同会话续跑 | 是 | 接着原版本 | 是 |
-| Fork / 分支（新会话） | 是 | **从空开始，不继承父会话** | 是 |
+| 新会话 | 写了才贴 | 空，按需创建 | 是 |
+| 同会话续跑 | 是（对话里已有就不重贴） | 接着原版本 | 是 |
+| Fork / 分支（新会话） | 父会话贴过的那条仍在对话里；分支写了自己的计划才贴新的 | **从空开始，不继承父会话** | 是 |
 | 子代理（默认） | 否 | 不创建 | 否，返回“subagent session does not keep a living plan” |
 
 - **Fork** 是新的 `session-id`，插件按 id 取文件，所以父计划不会自动带过去。要在分支继续用计划，fork 后让模型先写一份，或手动把父计划贴进对话。
@@ -246,6 +262,15 @@ $DSH_HOME/living-plan/<session-id>/
 - **`/plan`** 仍是官方评审门；评审通过后让模型把同一份计划用 `plan_write` 落盘即可，两者不互斥。
 
 ## 已验证
+
+2026-11-09，0.3.0，DSH 0.2.2-rc.1（临时 DSH_HOME，真模型 `auto/deepseek-v4.1-flash`）：
+
+- headless 6 轮对话，压缩阈值调到很小，压缩 4 次：系统提示全程一条、没被替换；每次压缩后下一步重贴最新版计划并附被压掉的用户原话；最后问“我最开始怎么说的、中途改了什么”，两句原话逐字答对；
+- 用户改口：一次模型下一步就改了计划并把旧方案写进「已作废」；一次 3 步没动计划，出现一次提醒，随即补进计划；
+- 任务进行中手改 `plan.md`：下一步贴出新版（`用户改了计划`）；
+- 缓存：改计划后下一步命中多为 94–98%（0.2.x 在 system 段里时同类请求 0–1%）；压缩后另有两次约 45%，同期手改计划的对照为 94%，不是贴计划本身所致；
+- 网页版：对话视图不显示计划消息，右栏面板照常；标准模式与 PTC 模式（`run_code` 里 `tools.plan_write`）都正常贴出；
+- 单测 24 项全过。
 
 2026-11-06，DSH 0.2.2-rc.1：桌面 App 与网页版装上即用；面板在深色 / 浅色主题下都清楚；PTC 新会话里 `tools.plan_write` 正常；从 GitHub 标签安装（`github:doctorllll/dsh-living-plan#v0.2.1`）实测可装。
 
@@ -295,10 +320,11 @@ node --check lib/client.js
 结构：
 
 ```text
-lib/core.js        存储、版本、哈希、外部改动检测（无 DSH 依赖，可单测）
-lib/index.js       Host 插件：prompt section、plan_read/plan_write、HTTP 路由
+lib/core.js        存储、版本、哈希、外部改动检测、计划结构提示（无 DSH 依赖，可单测）
+lib/deliver.js     会话投影、何时贴 / 提醒的判定、消息渲染（无 DSH 依赖，可单测）
+lib/index.js       Host 插件：契约段、pre-step 贴计划、plan_read/plan_write、HTTP 路由
 lib/client.js      Web 客户端：右栏面板，手写 __ModuleLoader__ bundle
-test/core.test.js  11 项单测
+test/*.test.js     24 项单测
 cordis.patch.yml   bundle 挂载行与默认配置
 ```
 
@@ -309,8 +335,9 @@ cordis.patch.yml   bundle 挂载行与默认配置
 - **面板只读**：不做行内编辑和 diff；改计划走 `plan_write` 或直接编辑文件。
 - **整份替换**：没有局部 patch；24KB 上限内够用，超了要模型自己收束。
 - **Fork 不继承**：DSH fork seed 不暴露父 session id，插件无法自动复制父计划；可做 fork 钩子，但需要上游配合。
-- **依赖 DSH 内部 API**：`agent/created`、`agent.ctx.systemPrompt.section`、`ctx.tools.register`、`webServer.register`；rc 升级后需要回归。
-- **不分 preset**：计划段注入 profile 里的每个会话，暂时没有"只对某些 preset 生效"的开关；不需要的 profile 用 `disabled: true` 关掉（见安装）。
+- **依赖 DSH 内部 API**：`agent/created`、`agent/pre-step`、`agent.ctx.systemPrompt.section`、`sessionProjections`、`session.eventAt`、压缩替换的 `sourceEventSeqs`、`ctx.tools.register`、`webServer.register`；rc 升级后需要回归。
+- **不分 preset**：契约段和计划消息进 profile 里的每个会话，暂时没有"只对某些 preset 生效"的开关；不需要的 profile 用 `disabled: true` 关掉（见安装）。
+- **原话账本只收 `source.kind: user` 的消息**（界面里打的字、headless / 定时任务的任务文本）；其他来源的合成消息不收。
 - **软约束**：模型是否主动写计划取决于任务判断，不是系统强制；要 100% 必写需要加工具调用前的硬闸。
 - 路线：按 preset 开关；面板行内编辑 / 版本 diff；fork 继承；失败重试与更细的预算控制。
 

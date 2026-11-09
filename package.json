@@ -1,7 +1,7 @@
 {
   "name": "dsh-living-plan",
-  "version": "0.2.1",
-  "description": "A living plan for DeepSeek Harness sessions: one Markdown file per session, versioned, editable by you, and re-injected at every step so it survives compaction",
+  "version": "0.3.0",
+  "description": "A living plan for DeepSeek Harness sessions: one Markdown file per session, versioned, editable by you, posted into the conversation and re-posted after every compaction with the user's own words, so long sessions keep to what the user wants now",
   "author": "doctorllll",
   "license": "MIT",
   "keywords": [
@@ -33,6 +33,7 @@
   "files": [
     "lib/core.js",
     "lib/index.js",
+    "lib/deliver.js",
     "lib/client.js",
     "cordis.patch.yml",
     "README.md",
@@ -57,7 +58,6 @@
     },
     "compatibility": {
       "dshReleases": {
-        "0.2.1-rc.5": "compatible",
         "0.2.2-rc.1": "compatible"
       }
     }

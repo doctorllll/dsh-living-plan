@@ -4,12 +4,12 @@ English · [中文](README.zh.md)
 
 > A DeepSeek Harness (DSH) plugin with a host half and a web client half. Not an agent skill.
 
-**Gives every DSH session a living plan**: one Markdown file that the model writes before it starts and keeps up to date while it works. Every save becomes a new version, and the current version is re-read and injected into the system prompt at every step, so the plan survives compaction, restarts and interruptions.
+**Gives every DSH session a living plan**: one Markdown file that the model writes before it starts and keeps up to date while it works. Every save becomes a new version and is posted into the conversation; after a compaction it is posted again, with the user's own words that the compaction replaced quoted verbatim. Through long sessions, repeated compaction and changes of mind, the model keeps working towards what the user wants **now**.
 
 It fills the gap between the built-in `/plan` (a one-off review) and `goal` (a one-line target): **where a long task stands now and what comes next**.
 
-- Version: 0.2.1 ([CHANGELOG](CHANGELOG.md))
-- Verified on DSH 0.2.1-rc.5 and 0.2.2-rc.1 (desktop app, `dsh web`, PTC mode)
+- Version: 0.3.0 ([CHANGELOG](CHANGELOG.md))
+- Verified on DSH 0.2.2-rc.1 (desktop app, `dsh web`, headless, PTC mode)
 - License: MIT
 
 <p>
@@ -25,35 +25,41 @@ The built-in `/plan` is a review gate: once approved, the plan lives only in a t
 
 dsh-living-plan keeps the plan in a **fixed per-session file**:
 
-- the model sees it at every step;
+- the model always holds the latest version: posted when it changes, posted again after a compaction;
 - every change is a version, and old versions stay readable;
-- you can edit the file yourself, and the next request picks up your edit;
+- you can edit the file yourself, and the next step picks up your edit;
+- DSH's compaction summary paraphrases the user in English; the plugin restores the replaced user words verbatim;
+- when the user speaks and the plan does not follow, the model is reminded to update it first;
 - a read-only panel in the web UI shows it without hunting for the path.
 
 ## What it does
 
 - **Fixed location**: `$DSH_HOME/living-plan/<session-id>/plan.md`, one per session, outside your workspace repository.
-- **Injected at every step**: a system prompt section reads the file fresh for each model step.
+- **Posted into the conversation, not the system prompt**: the plan text arrives as a `living-plan` message when there is a new version (your edits included), when a compaction swallowed the last copy, or when the last copy is `refreshSteps` steps back. The system prompt holds only the fixed writing contract, so saving a plan never rewrites the cached prompt prefix.
+- **Kept through compaction**: which version was posted and whether a compaction swallowed it are folded from the session log (a DSH compaction must list every node it shadows), so restarts and resumes agree.
+- **The user's words, verbatim**: user messages a compaction replaced ride along with the plan (the first one as fully as the budget allows, the rest clipped, total capped). Before a compaction they are in the conversation already and are not repeated.
+- **Change-of-mind reminder**: if the user spoke and the plan has not moved after `remindAfterSteps` steps, a short reminder quotes the user and asks the model to update the plan first. A long session with no plan gets one reminder too.
+- **Shape hints**: `plan_write` returns hints when the saved plan lacks a quote of the user's words or acceptance criteria (the save still goes through).
 - **Versions**: each `plan_write` or edit by you bumps the version; old ones go to `history/vNNNN.md`.
-- **You can edit it**: editing `plan.md` directly is a supported path; the next request treats it as a new version.
+- **You can edit it**: editing `plan.md` directly is a supported path; the next step posts it as a new version.
 - **Write guard**: `plan_write` is accepted only if the model has seen the current version. If the file changed in between (for example you edited it), the write is refused with `PLAN_STALE` and the model must `plan_read` first, so it never overwrites your edit with a stale copy.
 - **Subagents** keep no plan by default (`includeSubagents: false`).
 
-The prompt tells the model to write a plan unprompted for anything bigger than a quick question or a small fix, to update it when the work moves, to keep results rather than a log, and not to write one for trivial turns. This is a soft contract, not a hard gate.
+The prompt gives a skeleton (title, the user's words quoted with `>`, goal and acceptance, decided, dropped, progress, next) and tells the model to write a plan unprompted for anything bigger than a quick question or a small fix, to put the user's latest words above older plan text, to update the plan before acting on a change of mind, to check the acceptance list before calling the work done, and not to write one for trivial turns. This is a soft contract, not a hard gate.
 
 ## Install
 
-Requirements: DSH 0.2.1-rc.5 or 0.2.2-rc.1 (others untested); quit the desktop app before installing.
+Requirements: DSH 0.2.2-rc.1 (others untested; 0.3.0 needs the `sessionProjections` service); quit the desktop app before installing.
 
 ```sh
-dsh plugin --profile <profile> add github:doctorllll/dsh-living-plan#v0.2.1
+dsh plugin --profile <profile> add github:doctorllll/dsh-living-plan#v0.3.0
 ```
 
 The desktop app's `desktop` profile only accepts the CLI bundled with the app (a `dsh` on your PATH refuses with `managed exclusively by the Electron application`). On macOS:
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.2.1
+  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.0
 ```
 
 Reopen the app afterwards. The plugin applies to **new sessions** in that profile.
@@ -77,14 +83,21 @@ Override by id in the profile's `cordis.patch.yml`:
     includeSubagents: false   # true = subagent sessions keep their own plans
     maxPlanBytes: 24576       # plan size limit; plan_write over it returns PLAN_LIMIT
     historyLimit: 50          # how many old versions to keep; 0 = none
-    sectionOrder: 950         # where the section sits in the prompt; changing it changes the cache prefix
+    placement: message        # message = post into the conversation; system = the 0.2.x behaviour (plan in the system prompt)
+    refreshSteps: 40          # re-post after this many steps; 0 = never
+    remindAfterSteps: 3       # remind when the plan has not moved this many steps after the user spoke; 0 = off
+    noPlanAfterSteps: 8       # remind once when a session has no plan after this many steps; 0 = off
+    ledgerMaxBytes: 6144      # cap on the verbatim user words posted with the plan
+    sectionOrder: 950         # where the contract section sits in the prompt
     home: null                # defaults to $DSH_HOME, then ~/.dsh
 ```
+
+`placement: system` is the fallback switch: one line and a restart bring back the old behaviour (the reminders keep working).
 
 ## Tools
 
 - `plan_read` — returns `markdown`, `version`, `bytes`, `path`, `exists`, `truncated`, and marks this version as seen.
-- `plan_write({ markdown, note? })` — replaces the whole plan and creates the next version. Fails with `PLAN_STALE` (changed since the model saw it; read first) or `PLAN_LIMIT` (too large).
+- `plan_write({ markdown, note? })` — replaces the whole plan and creates the next version; may return `hints`. Fails with `PLAN_STALE` (changed since the model saw it; read first) or `PLAN_LIMIT` (too large).
 
 In PTC mode the model can only call `run_code` directly, so it calls them from code: `await tools.plan_write({ markdown: "# Plan\n\n- [ ] first step" })`. Sessions created before installing may cache the old tool declarations; open a new session.
 
@@ -109,9 +122,9 @@ The 「计划」 card in the right sidebar shows the current version, update tim
 
 | Case | Plan injected | Plan file | plan_write |
 |---|---|---|---|
-| New session | yes | empty, created on demand | yes |
-| Same session resumed | yes | continues | yes |
-| Fork / branch | yes | **starts empty** (not inherited) | yes |
+| New session | once written | empty, created on demand | yes |
+| Same session resumed | yes (not re-posted while still in the conversation) | continues | yes |
+| Fork / branch | the parent's posted copy stays in the history; the fork's own plan is posted once written | **starts empty** (not inherited) | yes |
 | Subagent (default) | no | none | no |
 
 `/plan` still works as the official review gate; after approval, have the model save the same plan with `plan_write`.
@@ -130,14 +143,15 @@ The 「计划」 card in the right sidebar shows the current version, update tim
 ## Development
 
 ```sh
-npm test            # 11 unit tests on the store (no DSH needed)
+npm test            # 24 unit tests on the store and the delivery rules (no DSH needed)
 node --check lib/index.js lib/client.js
 ```
 
 | File | Content |
 |---|---|
-| `lib/core.js` | storage, versions, hashes, external-edit detection (no DSH dependency) |
-| `lib/index.js` | host plugin: prompt section, `plan_read` / `plan_write`, HTTP route |
+| `lib/core.js` | storage, versions, hashes, external-edit detection, shape hints (no DSH dependency) |
+| `lib/deliver.js` | session projection, when to post and remind, message rendering (no DSH dependency) |
+| `lib/index.js` | host plugin: contract section, posting on `agent/pre-step`, `plan_read` / `plan_write`, HTTP route |
 | `lib/client.js` | web client: the panel, a hand-written module-loader bundle using `react` / `react/jsx-runtime` only, no build step |
 | `cordis.patch.yml` | bundle mount row and defaults |
 
@@ -147,7 +161,8 @@ node --check lib/index.js lib/client.js
 - Whole-file replacement only, within a 24 KB default limit.
 - Forks start empty: DSH's fork seed does not expose the parent session id.
 - Not per preset: the section goes into every session of the profile; disable the plugin where it is not wanted.
-- Depends on DSH host APIs (`agent/created`, `agent.ctx.systemPrompt.section`, `ctx.tools.register`, `webServer.register`); re-test after DSH upgrades.
+- Depends on DSH host APIs (`agent/created`, `agent/pre-step`, `agent.ctx.systemPrompt.section`, `sessionProjections`, `session.eventAt`, the `sourceEventSeqs` of compaction replacements, `ctx.tools.register`, `webServer.register`); re-test after DSH upgrades.
+- The verbatim ledger takes only `source.kind: user` messages (what the user typed, headless or scheduled task text).
 - Soft contract: whether the model writes a plan unprompted is its own judgement.
 
 ## Feedback
