@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { EMPTY_HASH, planHints } from '../lib/core.js'
+import { EMPTY_HASH } from '../lib/core.js'
 import { DEFAULTS, KIND, applyEvent, decide, initialState, ledgerEntries, messageFor, projection, renderPlanMessage, renderReminder } from '../lib/deliver.js'
 
 const SID = 'session-a'
@@ -180,7 +180,7 @@ test('rendered messages carry the version, the verbatim words and the reminder q
   const reminder = renderReminder({ kind: 'changed', seq: 2, steps: 3 }, plan({ version: 3 }), '改成 B')
   assert.match(reminder, /第 3 版之后/)
   assert.match(reminder, /> 改成 B/)
-  assert.match(reminder, /已作废/)
+  assert.match(reminder, /先把计划改成现在的要求/)
 })
 
 test('posted messages look like DSH user messages', () => {
@@ -189,9 +189,4 @@ test('posted messages look like DSH user messages', () => {
   assert.equal(message.source.kind, KIND)
   assert.equal(typeof message.id, 'string')
   assert.ok(Object.isFrozen(message.source))
-})
-
-test('plan hints ask for the user quote and acceptance', () => {
-  assert.equal(planHints('# P\n> 用户原话\n## 目标与验收\n- x').length, 0)
-  assert.equal(planHints('# P\n- x').length, 2)
 })

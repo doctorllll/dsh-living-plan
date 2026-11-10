@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { EMPTY_HASH, PlanConflictError, PlanLimitError, PlanStore, planPaths } from '../lib/core.js'
+import { EMPTY_HASH, PlanConflictError, PlanEditError, PlanLimitError, PlanStore, planPaths } from '../lib/core.js'
 
 function tempHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'living-plan-'))
@@ -34,6 +34,59 @@ test('whole replacement becomes the next version', () => {
   const saved = store.write('s1', '# Plan\n\nv2')
   assert.equal(saved.version, 2)
   assert.equal(store.refresh('s1').text, '# Plan\n\nv2\n')
+})
+
+test('plan_edit replaces the passages named and leaves the rest as it is', () => {
+  const store = new PlanStore({ home: tempHome() })
+  store.markSeen('s1', EMPTY_HASH)
+  const first = '# Plan\n\nNow: step 1 running.\n\n- [ ] step 1\n- [ ] step 2\n\n## Found\n- the port is 8787 ($1 a call)\n'
+  store.write('s1', first)
+  const saved = store.edit('s1', [
+    { old_string: 'Now: step 1 running.', new_string: 'Now: step 1 done, step 2 next.' },
+    { old_string: '- [ ] step 1', new_string: '- [x] step 1: 3 files moved ($& kept)' },
+  ])
+  assert.equal(saved.version, 2)
+  assert.equal(saved.edits, 2)
+  assert.equal(
+    store.refresh('s1').text,
+    '# Plan\n\nNow: step 1 done, step 2 next.\n\n- [x] step 1: 3 files moved ($& kept)\n- [ ] step 2\n\n## Found\n- the port is 8787 ($1 a call)\n',
+  )
+  assert.equal(JSON.parse(fs.readFileSync(store.paths('s1').meta, 'utf8')).updatedBy, 'agent')
+  assert.equal(store.readVersion('s1', 1), first)
+  // A later edit sees what the earlier one in the same call left.
+  assert.equal(store.edit('s1', [
+    { old_string: '- [ ] step 2', new_string: '- [ ] step two' },
+    { old_string: 'step two', new_string: 'step 2 (renamed back)' },
+  ]).version, 3)
+})
+
+test('plan_edit saves all of its edits or none', () => {
+  const store = new PlanStore({ home: tempHome() })
+  store.markSeen('s1', EMPTY_HASH)
+  assert.throws(() => store.edit('s1', [{ old_string: 'a', new_string: 'b' }]), /no plan yet/)
+  store.write('s1', '# Plan\n\n- [ ] one\n- [ ] two\n')
+  const before = store.refresh('s1')
+  const refused = (edits, pattern) => assert.throws(() => store.edit('s1', edits), (error) => error instanceof PlanEditError && pattern.test(error.message))
+  refused([], /at least one/)
+  refused([{ old_string: '- [ ] one', new_string: '- [x] one' }, { old_string: 'three', new_string: '3' }], /edit 2: old_string is not in the plan as the edits before it left it/)
+  refused([{ old_string: '- [ ] ', new_string: '- [x] ' }], /2 times/)
+  refused([{ old_string: '', new_string: 'x' }], /empty/)
+  refused([{ old_string: 'one', new_string: 'one' }], /the same/)
+  refused([{ old_string: 'one' }], /must be strings/)
+  const after = store.refresh('s1')
+  assert.equal(after.version, before.version)
+  assert.equal(after.text, before.text)
+})
+
+test('plan_edit obeys the same staleness and size rules as plan_write', () => {
+  const store = new PlanStore({ home: tempHome(), maxBytes: 64 })
+  store.markSeen('s1', EMPTY_HASH)
+  store.write('s1', '# Plan\n\nsmall\n')
+  assert.throws(() => store.edit('s1', [{ old_string: 'small', new_string: 'x'.repeat(80) }]), PlanLimitError)
+  fs.writeFileSync(planPaths(store.home, 's1').file, '# Plan\n\nthe user changed this\n')
+  assert.throws(() => store.edit('s1', [{ old_string: 'small', new_string: 'big' }]), PlanConflictError)
+  store.read('s1')
+  assert.equal(store.edit('s1', [{ old_string: 'the user changed this', new_string: 'both agree' }]).version, 3)
 })
 
 test('an external edit is a version and a stale write conflicts', () => {
