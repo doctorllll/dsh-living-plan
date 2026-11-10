@@ -8,7 +8,7 @@
 
 它补的是官方 `/plan`（一次性评审）和 `goal`（一句目标）之间的空档：**长任务的“现在在哪、下一步做什么”**。
 
-- 版本：0.3.1（[CHANGELOG](CHANGELOG.md)）
+- 版本：0.4.0（[CHANGELOG](CHANGELOG.md)）
 - 已验证 DSH：0.2.2-rc.1（桌面 App、网页版 `dsh web`、headless、PTC 模式）
 - License：MIT
 
@@ -51,15 +51,16 @@ DSH 自带的 `/plan` 是一个一次性评审门：批准之后，计划正文�
 ## 它做什么
 
 - **固定位置**：`$DSH_HOME/living-plan/<session-id>/plan.md`，按会话隔离，不写进工作区仓库。
-- **贴进对话，不改系统提示**：计划正文以一条 `living-plan` 消息贴进对话。何时贴：有新版本（含用户手改）、上一份被压缩吞掉、距上次贴出已满 `refreshSteps` 步。系统提示里只有不变的写作契约，改计划不会打掉前缀缓存。
+- **贴进对话，不改系统提示**：计划正文以一条 `living-plan` 消息贴进对话。何时贴：有新版本（含用户手改）、上一份被压缩吞掉、距上次贴出已满 `refreshSteps` 步。系统提示里只有一段不变的说明，改计划不会打掉前缀缓存。
 - **压缩后不丢**：“贴过哪一版、有没有被压缩吞掉”从会话日志推出（DSH 的压缩替换必须列出被遮蔽的每个节点），App 重启、续跑都一样。
 - **用户原话账本**：被压缩掉的用户消息逐字附在计划后面一起贴（首条尽量全文，其余截断，总量有上限）；压缩前原话本来就在对话里，不重复贴。
 - **改口提醒**：用户说话后计划没更新、又过了 `remindAfterSteps` 步，贴一次短提醒，引用户那句话，要求先改计划再继续；长会话一直没有计划，也提醒一次。
 - **进度提醒**：计划连续 `staleSteps` 步（默认 20）没改，贴一句短提醒：这段时间做完了什么、发现了什么、下一步变没变，有变化就更新，没变化就照常继续。之后每满 `staleSteps` 步最多再问一次，计划一改就重新计步。只在计划贴进对话时有效（`placement: message`）。
-- **结构提示**：`plan_write` 存下的计划缺“用户原话引用”或“验收标准”时，在返回里提示（不拒写）。
-- **版本历史**：每次 `plan_write` 或用户直接改文件，版本 +1，旧版留在 `history/vNNNN.md`。
+- **写法不设限**：提示词只说计划是干什么用的（接手的人只读它就能接着干），写什么、怎么排由模型自己定；不给模板，也不检查结构。
+- **局部修改**：`plan_edit` 只换变了的那几处，其余原样不动；`plan_write` 整份写，用于起稿和大调。
+- **版本历史**：每次 `plan_write` / `plan_edit` 或用户直接改文件，版本 +1，旧版留在 `history/vNNNN.md`。
 - **用户可改**：直接编辑 `plan.md` 是支持路径，不是篡改；下一步会把它当作新版本贴出。
-- **写前校验**：`plan_write` 只接受“模型已经看过当前版本”的写入；如果文件在两步之间被改过，写入被拒，提示先 `plan_read`。这是防止覆盖用户改动的闸门。
+- **写前校验**：`plan_write` / `plan_edit` 只接受“模型已经看过当前版本”的写入；如果文件在两步之间被改过，写入被拒，提示先 `plan_read`。这是防止覆盖用户改动的闸门。
 - **子代理默认不建计划**：`includeSubagents: false`，主会话的计划是唯一工作台；需要时可打开。
 - **Web 面板**：右栏 Guides「计划」，看当前版本、历史版本和文件路径。
 
@@ -67,7 +68,7 @@ DSH 自带的 `/plan` 是一个一次性评审门：批准之后，计划正文�
 
 ```
 模型请求组装
-  ├─ System prompt section: living-plan:plan    （固定文本：写作契约 + 文件路径）
+  ├─ System prompt section: living-plan:plan    （固定文本：计划的用途与用法 + 文件路径）
   └─ agent/pre-step
        ├─ 读取 plan.md（外部改动记为新版本）
        ├─ 会话投影 livingPlan：贴过哪一版、是否被压缩吞掉、
@@ -76,7 +77,7 @@ DSH 自带的 `/plan` 是一个一次性评审门：批准之后，计划正文�
        ├─ 需要时贴「计划提醒」
        └─ 标记这一版为“模型已看过”
 
-plan_read / plan_write
+plan_read / plan_write / plan_edit
   └─ PlanStore
        ├─ plan.md          当前正文
        ├─ meta.json        version / hash / bytes / updatedAt / updatedBy
@@ -87,25 +88,23 @@ Web 右栏「计划」
        └─ 同一个 PlanStore（只读，不标记已看过）
 ```
 
-### 写作契约
+### 提示词里说什么
 
-提示词里固定写清（节选）。计划骨架：标题下用 `>` 原样引用户的需求，然后「目标与验收」「已定」「已作废」「进度」「下一步」。
+只说两件事：计划是干什么用的，以及怎么读写它。**不规定写法**——不同模型按自己的方式写。
 
-> 开工前自己写，不用等用户要求：超过一次问答或小改动的工作，先用 `plan_write` 写出计划，再按顺序做。
+> 它记的是这件事现在做到哪了，给接手的人看：上下文被压缩或清空之后的你、你派出去的子代理、随时来看一眼的用户。标准只有一条：只读这份计划，就能接着干。写什么、怎么排、用清单还是段落或表格，都由你定。
 >
-> 用户最新的话优先于计划里的旧内容。用户改口时先改计划再动手：旧的挪进「已作废」，新的连原话写进「已定」。
+> 超过一次问答或小改动的工作，开工前自己先写一份，不用等用户要求。之后工作有了推进就改：做完一部分、定了一件事、路线变了、发现了后面要依赖的东西。
 >
-> 收工前逐条对照「目标与验收」，没满足的不说完成。
+> 用户最新的话优先于计划里的旧内容：他改主意时，先把计划改成现在的要求，再动手。
 >
-> 用 `plan_write` 整份替换；写之前如果用户可能刚改过，先 `plan_read`。
->
-> 不要写成流水账：完成的步骤删掉过程只留结果，同一件事只写一处。
->
-> 不要为一次问答、小查看、小修写计划；一轮下来没有任何推进也不要改。
+> `plan_edit` 只换变了的那几处，平时用它；`plan_write` 整份写，起稿和要大调时用。
+
+插件管的是计划周围的系统：存取与版本、贴进对话、压缩后带回来、提醒模型更新。0.3.x 给过一个六段骨架并检查“有没有引用户原话、有没有验收标准”，实际用下来计划成了填表，0.4.0 去掉了。
 
 ### “已看过”闸门
 
-`plan_write` 比较两个哈希：
+`plan_write` 和 `plan_edit` 都比较两个哈希：
 
 - 当前文件的哈希；
 - 模型最后一次看到的那一版的哈希（`seenHash`，贴出或确认对话里已有当前版时记下）。
@@ -134,7 +133,7 @@ error: profile "desktop" is managed exclusively by the Electron application
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.1
+  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.4.0
 ```
 
 装完重开 App。插件随 profile 加载，对所有**新会话**生效。
@@ -142,7 +141,7 @@ error: profile "desktop" is managed exclusively by the Electron application
 ### 其他 profile（网页版、TUI 等）
 
 ```sh
-dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.1
+dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.4.0
 ```
 
 ### 只想在部分 profile 里用
@@ -156,7 +155,7 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.1
 
 ### 升级
 
-把命令里的 `#v0.3.1` 换成新版本的标签重新 `plugin add`，重开 App。从本地目录安装（`add <路径>`）时，`git pull` 后重开 App 即生效。
+把命令里的 `#v0.4.0` 换成新版本的标签重新 `plugin add`，重开 App。从本地目录安装（`add <路径>`）时，`git pull` 后重开 App 即生效。
 
 ### 卸载
 
@@ -183,7 +182,7 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.1
     staleSteps: 20            # 计划连续多少步没改就问一次进度；0 = 关
     noPlanAfterSteps: 8       # 会话多少步还没计划就提醒一次；0 = 关
     ledgerMaxBytes: 6144      # 用户原话账本上限（字节）
-    sectionOrder: 950         # 契约段位置
+    sectionOrder: 950         # 说明段位置
     home: null                # 默认 $DSH_HOME，再退到 ~/.dsh
 ```
 
@@ -193,11 +192,11 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.1
 
 ### `plan_read`
 
-读当前计划，并把这一版标记为“模型已看过”。
+读当前计划，并把这一版标记为“模型已看过”。带 `version` 时读回历史里的某一版（不改“已看过”标记）。
 
-- 参数：无
-- 返回：`markdown`、`version`、`bytes`、`path`、`exists`、`truncated`
-- 计划不存在时返回空正文和 `exists: false`
+- 参数：`version`（可选）：要读回的旧版本号
+- 返回：`markdown`、`version`、`bytes`、`path`、`exists`、`truncated`；读旧版时另有 `current`（当前版本号）
+- 计划不存在时返回空正文和 `exists: false`；版本不在历史里时报错并给出保留范围
 
 ### `plan_write`
 
@@ -206,10 +205,24 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.1
 - 参数：
   - `markdown`（必填）：完整 Markdown，建议以短标题开头
   - `note`（可选）：写进 `history/index.jsonl` 的变更说明，不进入计划正文
-- 返回：`version`、`bytes`、`path`；缺用户原话引用或验收标准时另有 `hints`（只是提示，已保存）
+- 返回：`version`、`bytes`、`path`
 - 失败：
   - `PLAN_STALE`：文件在模型看到后被改过，先 `plan_read`
   - `PLAN_LIMIT`：超过 `maxPlanBytes`，先压缩计划
+
+### `plan_edit`
+
+原地修改：只替换给出的那几段，其余一字不动；一次调用里的全部替换合成一版，有一处对不上就整次不保存。
+
+- 参数：
+  - 改一处：直接给 `old_string`、`new_string`
+  - 改多处：`edits` 数组，按顺序应用，每项 `{ old_string, new_string }`
+  - `old_string` 要从当前计划里原样复制，并且在计划里只出现一次
+  - `note`（可选）：同 `plan_write`
+- 返回：`version`、`bytes`、`path`、`edits`（改了几处）
+- 失败：
+  - `PLAN_EDIT`：还没有计划（先 `plan_write`）；`old_string` 找不到或出现多次；替换前后相同
+  - `PLAN_STALE`、`PLAN_LIMIT`：同 `plan_write`
 
 ### PTC 模式
 
@@ -217,10 +230,11 @@ dsh plugin --profile <profile 名> add github:doctorllll/dsh-living-plan#v0.3.1
 
 ```ts
 await tools.plan_write({ markdown: "# 计划\n\n- [ ] 第一步" })
+await tools.plan_edit({ old_string: "- [ ] 第一步", new_string: "- [x] 第一步：已完成" })
 const plan = await tools.plan_read({})
 ```
 
-新会话的 `tools:sdk` 会声明这两个工具；**安装前就已存在的会话**可能缓存旧声明，看不到签名但 `tools.plan_*` 实际可调用，开新会话即可拿到完整声明。
+新会话的 `tools:sdk` 会声明这三个工具；**安装前就已存在的会话**可能缓存旧声明，看不到签名但 `tools.plan_*` 实际可调用，开新会话即可拿到完整声明。
 
 ## 存储结构
 
@@ -231,7 +245,7 @@ $DSH_HOME/living-plan/<session-id>/
 └── history/
     ├── v0001.md
     ├── v0002.md
-    └── index.jsonl         仅当 plan_write 传了 note
+    └── index.jsonl         仅当 plan_write / plan_edit 传了 note
 ```
 
 - 目录权限 0700，文件 0600；写入走临时文件 + `rename`，避免半截文件。
@@ -264,6 +278,13 @@ $DSH_HOME/living-plan/<session-id>/
 - **`/plan`** 仍是官方评审门；评审通过后让模型把同一份计划用 `plan_write` 落盘即可，两者不互斥。
 
 ## 已验证
+
+2026-11-10，0.4.0，DSH 0.2.2-rc.1（临时 DSH_HOME，headless + PTC 执行器，`zglm/GLM-5.3` 与 `auto/deepseek-v4.1-flash`）：
+
+- 同一个四轮任务（先问清再做、第三轮用户改主意、第四轮进入新阶段），0.3.1 与 0.4.0 各跑一遍。GLM-5.3 在 0.4.0 下 7 版里 6 版用 `plan_edit`，新版平均保留上一版 74% 的行（0.3.1 为 31%）；DeepSeek 8 次保存里 4 次用 `plan_edit`，每来一条新的用户消息仍整份重写，保留率 45%（0.3.1 为 41%）。
+- 把各组的最终计划单独交给一个没看过对话的新会话：四份都答对了“做到哪、下一步、在等用户定什么”；问“用户先后提过哪些要求、改过什么主意”时，只有 0.4.0 + GLM 那份答全，另外三份只剩最后一个阶段的要求。
+- `plan_edit` 单处、一次多处，`plan_read({ version })` 读回旧版：PTC（两个模型）和标准模式各跑一遍，版本数与内容都对，无报错。
+- 单测 30 项全过。
 
 2026-11-09，0.3.1：网页版临时 home 实测分支——原会话计划第 2 版，点「在新对话中分支」后新会话第一步就贴出"计划从原会话第 2 版带过来"，内容与原会话 v2 逐字相同；模型接着改出本会话 v2、v3，并能说清计划来历。单测 27 项。
 
@@ -324,9 +345,9 @@ node --check lib/client.js
 结构：
 
 ```text
-lib/core.js        存储、版本、哈希、外部改动检测、计划结构提示（无 DSH 依赖，可单测）
+lib/core.js        存储、版本、哈希、外部改动检测、局部修改（无 DSH 依赖，可单测）
 lib/deliver.js     会话投影、何时贴 / 提醒的判定、消息渲染（无 DSH 依赖，可单测）
-lib/index.js       Host 插件：契约段、pre-step 贴计划、plan_read/plan_write、HTTP 路由
+lib/index.js       Host 插件：说明段、pre-step 贴计划、plan_read/plan_write/plan_edit、HTTP 路由
 lib/client.js      Web 客户端：右栏面板，手写 __ModuleLoader__ bundle
 test/*.test.js     24 项单测
 cordis.patch.yml   bundle 挂载行与默认配置
@@ -336,11 +357,11 @@ cordis.patch.yml   bundle 挂载行与默认配置
 
 ## 已知边界与路线
 
-- **面板只读**：不做行内编辑和 diff；改计划走 `plan_write` 或直接编辑文件。
+- **面板只读**：不做行内编辑和 diff；改计划走 `plan_write` / `plan_edit` 或直接编辑文件。
 - **整份替换**：没有局部 patch；24KB 上限内够用，超了要模型自己收束。
 - **继承靠对话里贴过的计划消息认出原会话**：原会话从没贴过计划（比如 0.2.x 时代的会话），分支出来就没有可继承的。
 - **依赖 DSH 内部 API**：`agent/created`、`agent/pre-step`、`agent.ctx.systemPrompt.section`、`sessionProjections`、`session.eventAt`、压缩替换的 `sourceEventSeqs`、`ctx.tools.register`、`webServer.register`；rc 升级后需要回归。
-- **不分 preset**：契约段和计划消息进 profile 里的每个会话，暂时没有"只对某些 preset 生效"的开关；不需要的 profile 用 `disabled: true` 关掉（见安装）。
+- **不分 preset**：说明段和计划消息进 profile 里的每个会话，暂时没有"只对某些 preset 生效"的开关；不需要的 profile 用 `disabled: true` 关掉（见安装）。
 - **原话账本只收 `source.kind: user` 的消息**（界面里打的字、headless / 定时任务的任务文本）；其他来源的合成消息不收。
 - **软约束**：模型是否主动写计划取决于任务判断，不是系统强制；要 100% 必写需要加工具调用前的硬闸。
 - 路线：按 preset 开关；面板行内编辑 / 版本 diff；失败重试与更细的预算控制。

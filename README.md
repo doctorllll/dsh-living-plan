@@ -8,7 +8,7 @@ English · [中文](README.zh.md)
 
 It fills the gap between the built-in `/plan` (a one-off review) and `goal` (a one-line target): **where a long task stands now and what comes next**.
 
-- Version: 0.3.1 ([CHANGELOG](CHANGELOG.md))
+- Version: 0.4.0 ([CHANGELOG](CHANGELOG.md))
 - Verified on DSH 0.2.2-rc.1 (desktop app, `dsh web`, headless, PTC mode)
 - License: MIT
 
@@ -35,32 +35,33 @@ dsh-living-plan keeps the plan in a **fixed per-session file**:
 ## What it does
 
 - **Fixed location**: `$DSH_HOME/living-plan/<session-id>/plan.md`, one per session, outside your workspace repository.
-- **Posted into the conversation, not the system prompt**: the plan text arrives as a `living-plan` message when there is a new version (your edits included), when a compaction swallowed the last copy, or when the last copy is `refreshSteps` steps back. The system prompt holds only the fixed writing contract, so saving a plan never rewrites the cached prompt prefix.
+- **Posted into the conversation, not the system prompt**: the plan text arrives as a `living-plan` message when there is a new version (your edits included), when a compaction swallowed the last copy, or when the last copy is `refreshSteps` steps back. The system prompt holds only a fixed note on what the plan is for, so saving a plan never rewrites the cached prompt prefix.
 - **Kept through compaction**: which version was posted and whether a compaction swallowed it are folded from the session log (a DSH compaction must list every node it shadows), so restarts and resumes agree.
 - **The user's words, verbatim**: user messages a compaction replaced ride along with the plan (the first one as fully as the budget allows, the rest clipped, total capped). Before a compaction they are in the conversation already and are not repeated.
 - **Change-of-mind reminder**: if the user spoke and the plan has not moved after `remindAfterSteps` steps, a short reminder quotes the user and asks the model to update the plan first. A long session with no plan gets one reminder too.
 - **Progress reminder**: when the plan has not changed for `staleSteps` steps (default 20), a short note asks what got done, what turned up and whether the next step changed — update the plan if so, carry on if not. It asks again at most every `staleSteps` steps, and a new version restarts the count. Only with `placement: message`.
-- **Shape hints**: `plan_write` returns hints when the saved plan lacks a quote of the user's words or acceptance criteria (the save still goes through).
-- **Versions**: each `plan_write` or edit by you bumps the version; old ones go to `history/vNNNN.md`.
+- **No set form**: the prompt says what the plan is for (whoever picks the work up should be able to carry on from the plan alone) and leaves what to write and how to lay it out to the model. No template, no shape checks.
+- **Edits in place**: `plan_edit` replaces the passages that changed and leaves the rest untouched; `plan_write` writes the whole plan, for a first draft or a reshaping.
+- **Versions**: each `plan_write` / `plan_edit` or edit by you bumps the version; old ones go to `history/vNNNN.md`.
 - **You can edit it**: editing `plan.md` directly is a supported path; the next step posts it as a new version.
-- **Write guard**: `plan_write` is accepted only if the model has seen the current version. If the file changed in between (for example you edited it), the write is refused with `PLAN_STALE` and the model must `plan_read` first, so it never overwrites your edit with a stale copy.
+- **Write guard**: `plan_write` / `plan_edit` are accepted only if the model has seen the current version. If the file changed in between (for example you edited it), the write is refused with `PLAN_STALE` and the model must `plan_read` first, so it never overwrites your edit with a stale copy.
 - **Subagents** keep no plan by default (`includeSubagents: false`).
 
-The prompt gives a skeleton (title, the user's words quoted with `>`, goal and acceptance, decided, dropped, progress, next) and tells the model to write a plan unprompted for anything bigger than a quick question or a small fix, to put the user's latest words above older plan text, to update the plan before acting on a change of mind, to check the acceptance list before calling the work done, and not to write one for trivial turns. This is a soft contract, not a hard gate.
+The prompt tells the model what the plan is for, to write one unprompted for anything bigger than a quick question or a small fix, to keep it current as the work moves, and to put the user's latest words above older plan text (update the plan before acting on a change of mind). How the plan is written is the model's own business: 0.3.x gave a six-part skeleton and checked for a user quote and acceptance criteria, which turned plans into form-filling, so 0.4.0 dropped both. The plugin keeps the system around the plan: storage and versions, posting, bringing it back after compaction, and reminders to update.
 
 ## Install
 
 Requirements: DSH 0.2.2-rc.1 (others untested; 0.3.0 needs the `sessionProjections` service); quit the desktop app before installing.
 
 ```sh
-dsh plugin --profile <profile> add github:doctorllll/dsh-living-plan#v0.3.1
+dsh plugin --profile <profile> add github:doctorllll/dsh-living-plan#v0.4.0
 ```
 
 The desktop app's `desktop` profile only accepts the CLI bundled with the app (a `dsh` on your PATH refuses with `managed exclusively by the Electron application`). On macOS:
 
 ```sh
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.3.1
+  plugin --profile desktop add github:doctorllll/dsh-living-plan#v0.4.0
 ```
 
 Reopen the app afterwards. The plugin applies to **new sessions** in that profile.
@@ -90,7 +91,7 @@ Override by id in the profile's `cordis.patch.yml`:
     staleSteps: 20            # ask about progress when the plan has not changed this many steps; 0 = off
     noPlanAfterSteps: 8       # remind once when a session has no plan after this many steps; 0 = off
     ledgerMaxBytes: 6144      # cap on the verbatim user words posted with the plan
-    sectionOrder: 950         # where the contract section sits in the prompt
+    sectionOrder: 950         # where the plugin's section sits in the prompt
     home: null                # defaults to $DSH_HOME, then ~/.dsh
 ```
 
@@ -98,8 +99,9 @@ Override by id in the profile's `cordis.patch.yml`:
 
 ## Tools
 
-- `plan_read` — returns `markdown`, `version`, `bytes`, `path`, `exists`, `truncated`, and marks this version as seen.
-- `plan_write({ markdown, note? })` — replaces the whole plan and creates the next version; may return `hints`. Fails with `PLAN_STALE` (changed since the model saw it; read first) or `PLAN_LIMIT` (too large).
+- `plan_read({ version? })` — returns `markdown`, `version`, `bytes`, `path`, `exists`, `truncated`, and marks this version as seen. With `version`, reads an earlier version back from the history (and marks nothing).
+- `plan_write({ markdown, note? })` — writes the whole plan and creates the next version. Fails with `PLAN_STALE` (changed since the model saw it; read first) or `PLAN_LIMIT` (too large).
+- `plan_edit({ old_string, new_string, note? })` for one place, or `plan_edit({ edits: [{ old_string, new_string }], note? })` for several — replaces the given passages and leaves everything else as it is; all edits of a call are saved as one version or none is. Each `old_string` must be copied exactly from the current plan and occur once. Fails with `PLAN_EDIT` (no plan yet, text not found or found more than once, nothing to change), `PLAN_STALE` or `PLAN_LIMIT`.
 
 In PTC mode the model can only call `run_code` directly, so it calls them from code: `await tools.plan_write({ markdown: "# Plan\n\n- [ ] first step" })`. Sessions created before installing may cache the old tool declarations; open a new session.
 
@@ -111,7 +113,7 @@ $DSH_HOME/living-plan/<session-id>/
 ├── meta.json        version / hash / bytes / updatedAt / updatedBy
 └── history/
     ├── v0001.md
-    └── index.jsonl  only when plan_write passed a note
+    └── index.jsonl  only when plan_write / plan_edit passed a note
 ```
 
 Directories are 0700 and files 0600; writes go through a temp file and `rename`. The session id is sanitised before it becomes a path.
@@ -151,16 +153,16 @@ node --check lib/index.js lib/client.js
 
 | File | Content |
 |---|---|
-| `lib/core.js` | storage, versions, hashes, external-edit detection, shape hints (no DSH dependency) |
+| `lib/core.js` | storage, versions, hashes, external-edit detection, edits in place (no DSH dependency) |
 | `lib/deliver.js` | session projection, when to post and remind, message rendering (no DSH dependency) |
-| `lib/index.js` | host plugin: contract section, posting on `agent/pre-step`, `plan_read` / `plan_write`, HTTP route |
+| `lib/index.js` | host plugin: prompt section, posting on `agent/pre-step`, `plan_read` / `plan_write` / `plan_edit`, HTTP route |
 | `lib/client.js` | web client: the panel, a hand-written module-loader bundle using `react` / `react/jsx-runtime` only, no build step |
 | `cordis.patch.yml` | bundle mount row and defaults |
 
 ## Known limits
 
-- The panel is read-only (no inline edit or diff); change the plan with `plan_write` or by editing the file.
-- Whole-file replacement only, within a 24 KB default limit.
+- The panel is read-only (no inline edit or diff); change the plan with `plan_write` / `plan_edit` or by editing the file.
+- The plan is capped at 24 KB by default.
 - A copied session finds its parent through the plan messages it inherited; a parent that never posted a plan (0.2.x sessions) leaves nothing to inherit.
 - Not per preset: the section goes into every session of the profile; disable the plugin where it is not wanted.
 - Depends on DSH host APIs (`agent/created`, `agent/pre-step`, `agent.ctx.systemPrompt.section`, `sessionProjections`, `session.eventAt`, the `sourceEventSeqs` of compaction replacements, `ctx.tools.register`, `webServer.register`); re-test after DSH upgrades.

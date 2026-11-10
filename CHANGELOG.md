@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 — 2026-11-10
+
+Principle: what the plan says and how it is laid out is the model's own business; the plugin keeps the system around it (reading, saving, bringing it back, nudging the model to update).
+
+- The prompt no longer gives a skeleton. It says what the plan is for (whoever picks the work up should be able to carry on from the plan alone), when to write and update it, that the user's latest words outrank older plan text, and how to save it. The six-part layout, the 「已作废」 section and the required user quotes are gone.
+- `plan_write` no longer returns shape `hints`; nothing checks the plan's structure.
+- New tool `plan_edit` (`{ old_string, new_string }` for one place, `{ edits: [...] }` for several): replaces the passages given and leaves the rest of the plan exactly as it is. All edits of a call become one version, or none is saved; each `old_string` must occur once. Same staleness and size rules as `plan_write`. Until now every update rewrote the whole plan: across 12 real sessions only about 27% of a plan's lines survived an update unchanged, and details the work still needed were dropped along the way.
+- `plan_read({ version })` reads an earlier version back from the history.
+- Reminder texts no longer refer to any layout.
+
 ## 0.3.1 — 2026-11-09
 
 - A session DSH copies into a new id — a branch ("在新对话中分支"), a move to another workspace — now inherits its parent's plan instead of starting over. The parent is found through the plan messages the copy inherited; the parent version the conversation showed is taken by hash from the parent's history (else the parent's current plan, noted as such) and saved as the copy's version 1 (`updatedBy: inherited`, `meta.inheritedFrom`). 0.3.0 posted "还没有计划" in such a copy, contradicting the plan still visible in its history.
