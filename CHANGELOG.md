@@ -9,6 +9,7 @@ Principle: what the plan says and how it is laid out is the model's own business
 - New tool `plan_edit` (`{ old_string, new_string }` for one place, `{ edits: [...] }` for several): replaces the passages given and leaves the rest of the plan exactly as it is. All edits of a call become one version, or none is saved; each `old_string` must occur once. Same staleness and size rules as `plan_write`. Until now every update rewrote the whole plan: across 12 real sessions only about 27% of a plan's lines survived an update unchanged, and details the work still needed were dropped along the way.
 - `plan_read({ version })` reads an earlier version back from the history.
 - Reminder texts no longer refer to any layout.
+- The prompt names what a reader must be able to learn from the plan alone: what the work is for, what the user decided (including where they corrected the model's understanding), where it stands and what comes next; the first two run through the whole job and are to be carried over when a new phase starts or the plan is rewritten. Without that sentence a DeepSeek run rewrote the plan at each new phase and kept only the current phase's requirements.
 
 ## 0.3.1 — 2026-11-09
 
